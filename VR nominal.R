@@ -1,4 +1,3 @@
-
 #================================================================
 #------------------- Librerías----------------------------------
 #================================================================
@@ -13,6 +12,9 @@ library(ggplot2)       # Para la visualización
 library(readxl)        # para lectura de datos en excel
 library(readr)         # para lectura de datos 
 library(lubridate)     # para trabajo con fechas
+library(highcharter)
+library(patchwork)
+
 
 
 ################################################################
@@ -29,14 +31,13 @@ VR_NOMINAL <- fread("VR_NOMINAL_Neuquen-02-03-2026.csv",
                     na.strings = c("", "*SIN DATO* (*SIN DATO*)", "*sin dato*", "sin dato", "SIN DATO"))
 
 
-#  VR_NOMINAL <- read_excel("VR_NOMINAL_Neuquen.xlsx")
 
 #filtro ID prov INDEC residencia = 58 y 0. 58 es Nqn y 0 S/Datos
 #filtro ID_filter(ID_PROV_INDEC_CLINICA == 58 por el peso al sistema de salud ("saturacion")
 VR_NOMINAL <- VR_NOMINAL %>% 
   filter(ID_PROV_INDEC_RESIDENCIA %in% c(58, 0)) %>% 
   filter(ID_PROV_INDEC_CLINICA == 58) 
-  
+
 
 
 #filtro ID eventos 
@@ -61,6 +62,13 @@ VR_NOMINAL <- VR_NOMINAL %>%
 
 VR_NOMINAL <- VR_NOMINAL %>% 
   filter(ANIO_EPI_APERTURA ==2025)
+
+
+
+#filtro internacion
+
+VR_NOMINAL <- VR_NOMINAL %>% 
+  filter(INTERNADO =="SI")
 
 ############# SECCIÓN 1:    FUNCIONES  ######################################
 
@@ -221,7 +229,8 @@ algoritmo_1 <- function(data, col_signos, col_comorbilidades, col_determinacion,
     paste(ids_revision, collapse = ", ")
   )
   
-  print(mensaje_revision)
+  #print(mensaje_revision)
+  invisible(mensaje_revision)
   
   data <- data %>% dplyr::select(-DETERMINACION, -RESULTADO)
   
@@ -456,10 +465,7 @@ resultado <- analizar_determinaciones(
   columnas_determinacion = columnas_determinacion,# columnas determinacion creado arriba
   variable_agrupar = "SEPI_APERTURA",# variables de agrupacion principal
   variable_cruce = "ANIO_EPI_APERTURA",# variables de agrupacion secundaria (opciona)
-  clasificar = clasificar_virus # Clasificacion de virus  arriba, opcional. 
-)
-
-
+  clasificar = clasificar_virus) # Clasificacion de virus  arriba, opcional. 
 
 
 resultado_long <- resultado %>%
@@ -472,14 +478,26 @@ resultado_long <- resultado %>%
 resultado_long_sinotro <- resultado_long %>% 
   filter(DETERMINACION != "Otro")
 
+resultado_long_sinotro <- resultado_long_sinotro %>%
+  mutate(
+    Tipo_Resultado = recode(Tipo_Resultado,
+                            "No_detectable" = "No detectable",
+                            "Detectable" = "Detectable"))
+
+
+
+positivos_invierno <- resultado_long_sinotro %>%
+  filter(
+    Tipo_Resultado == "Detectable",
+    as.numeric(SEPI_APERTURA) >= 19,
+    as.numeric(SEPI_APERTURA) <= 40)
 
 ###GRAFICO#####
 
-
-ggplot(resultado_long_sinotro, 
-       aes(x = as.numeric(SEPI_APERTURA), 
-           y = n, 
-           fill = Tipo_Resultado)) +
+grafico_virusprov_gglop <- ggplot(resultado_long_sinotro, 
+                                  aes(x = as.numeric(SEPI_APERTURA), 
+                                      y = n, 
+                                      fill = Tipo_Resultado)) +
   
   # 🔵 sombreado con leyenda
   geom_rect(aes(xmin = 19, xmax = 40, ymin = -Inf, ymax = Inf,
@@ -492,39 +510,114 @@ ggplot(resultado_long_sinotro,
              linetype = "dashed",
              color = "#FFF3BB",
              linewidth = 0.8) +
-  
   geom_col(position = "stack") +
-  
-  facet_wrap(~ DETERMINACION) +
-  
+  facet_wrap(~ DETERMINACION, ncol = 2) +
   scale_fill_manual(
     values = c(
-      "No_detectable" = "#60730c",
+      "No detectable" = "#60730c",
       "Detectable" = "#b39cd0",
-      "Periodo del Plan Invierno (Mayo-Septiembre)" = "#FFF3BB"
-    ),
-    name = "Resultado"
-  ) +
-  
+      "Periodo del Plan Invierno (Mayo-Septiembre)" = "#FFF3BB"),
+    name = "Resultado") +
   scale_x_continuous(breaks = seq(1, 53, by = 3)) +
-  
   labs(
-    title = "Detección de virus respiratorios por semana. Año 2025",
+    title = "Detección de virus respiratorios por semana. Provincia del Neuquén, año 2025.\n N=714",
     x = "Semana epidemiológica",
-    y = "Número de testeos"
-  ) +
-  
+    y = "Número de testeos") +
   theme_classic() +
   theme(
     legend.position = "bottom")
+grafico_virusprov_gglop
+
+#######################################################
+#### GRUPOS DE EDAD ####################################
+######################################################
+
+data_edad_virus <- VRNOMINAL_EVENTOCASO %>%
+  pivot_longer(
+    cols = starts_with("DETERMINACION_"),
+    names_to = "Tipo_Determinacion",
+    values_to = "Resultado") %>%
+  mutate(
+    DETERMINACION = clasificar_virus(Tipo_Determinacion),
+    Resultado = str_to_lower(Resultado)) %>%
+  filter(Resultado %in% c("positivo", "detectable")) %>%
+  filter(DETERMINACION != "Otro") %>% 
+  count(GRUPO_ETARIO, DETERMINACION)
+
+N_total_grupoedad<- sum(data_edad_virus$n)
+
+#orden grupos etarios
+data_edad_virus <- data_edad_virus %>%
+  mutate(
+    GRUPO_ETARIO = factor(
+      GRUPO_ETARIO,
+      levels = c(
+        "Neonato (hasta 28 dÍas)",
+        "Posneonato (29 hasta 365 dÍas)",
+        "De 13 a 24 meses",
+        "De 2 a 4 años",
+        "De 5 a 9 años",
+        "De 10 a 14 años")))
+
+
+colores_virus <- c(
+   "Influenza A" = "#f9f871",
+  "Metaneumovirus" = "#ffc75f",
+  "Parainfluenza" = "#ff9671",
+  "SARS-CoV-2" = "#ff6f91",
+  "Adenovirus" = "#d65db1",
+  "VSR" = "#ab87b8")
+
+grafico_edad_VR <- ggplot(data_edad_virus,
+       aes(y = GRUPO_ETARIO,
+           x = n,
+           fill = DETERMINACION)) +
+  scale_fill_manual(values = colores_virus) +
+  geom_col(position = "stack") +
+  labs(
+    title = "Distribución de casos positivos por grupo etario según virus. Provincia del Neuquén, año 2025.\nN=429",
+    x = "Número de casos",
+    y = "Grupo de edad",
+    fill = "Virus") +
+  theme_classic()+
+  theme(
+    legend.position = "bottom")
+grafico_edad_VR 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
 #---------------------------------------------------------------------
-#--------------------- GRÁFICO DETECCIONES POSITIVAS------------------
+#--------------------- ANALISIS POR REGION----------------------------
 #---------------------------------------------------------------------
 
 
+
+#OJO QUE ESTE GRAFICO ES PARA LAS DETERMINACIONES POSITIVAS
 
 # Primero transformamos a formato largo para poder graficar detectables y no detectables juntos
 resultado_influenza <- resultado %>%
@@ -560,14 +653,11 @@ grafico_total
 
 
 
+#---------------------------------------------------------------------
+#--------------------- REGION DE LOS LAGOS DEL SUR--------------------
+#---------------------------------------------------------------------
 
 
 
-
-
-
-write.csv(VRNOMINAL_EVENTOCASO, "VR_NOMINAL_filtrada.csv", row.names = FALSE, fileEncoding = "Latin1")
-
-write.csv(resultado, "resultado.csv", row.names = FALSE, fileEncoding = "Latin1")
 
 

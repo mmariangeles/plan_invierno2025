@@ -1,0 +1,61 @@
+---
+format: 
+  html:
+    code-fold: false
+    echo: false
+    embed-resources: true
+    published-title: "Fecha de actualización:"
+    author-title: "Autor:"
+    toc: true
+    toc-title: "Índice de Contenidos"
+    toc-depth: 3
+    toc-location: left
+    css: CSS/style.css
+editor: visual
+execute:
+  warning: false
+  message: false
+footnotes-hover: true
+smooth-scroll: true
+code-copy: false
+---
+
+![](logos/logo_1.png)
+
+```{r ECHO=FALSE, warning=FALSE, message=FALSE}
+source("VR nominal.R")
+```
+
+## **Informe Plan invierno-Dirección de Maternidad e Infancia**
+
+Esta estrategia se extiende entre los meses de mayo y septiembre con la implementación de consultorios especiales (programados o a demanda) para la atención de infecciones respiratorias y postas de bronquiolitis, con disponibilidad de oxígeno en centros de salud, destinados al abordaje de episodios críticos vinculados a cuadros respiratorios, priorizando la atención de las niñeces.
+
+Este documento tiene como objetivo describir la estrategia del año 2025. Tiene como fuente de información la vigilancia del sistema nacional (SNVS 2.0) y las consultas ambulatorias de ANDES.
+
+### **Criterios de inclusión**
+
+A\) del sistema nacional de vigilancia
+
+-   Provincia de residencia igual a "Neuquén" (ID 58) o "Sin datos" (ID 0)
+
+-   Provincia clínica igual a "Neuquén" (ID 58).
+
+-   Evento igual a "Internado y/o fallecido por COVID/IRA" y "Unidad centinela de IRAG"
+
+-   Internación igual a "SI".
+
+-   Grupo de edad: hasta 14 años inclusive.
+
+-   Periodo: año 2025
+
+## **Situación provincial**
+
+En el año 2025, fueron 429 determinaciones positivas las que se registraron en el SNVS. Específicamente, en el periodo del Plan Invierno fueron 154 determinaciones positivas notificadas. REVISAR
+
+```{r}
+grafico_virusprov_gglop
+```
+
+```{r fig.width=20, fig.height=10}
+grafico_edad_VR 
+```
