@@ -48,14 +48,38 @@ A\) del sistema nacional de vigilancia
 
 -   Periodo: año 2025
 
+`Sugerencia de navegación: al hacer click en los gráficos/tablas se amplía su tamaño`
+
+`La unidad de análisis de este informe son los NNyA ≤14 años. Puede tener más de una determinación positiva.`
+
 ## **Situación provincial**
 
-En el año 2025, fueron 429 determinaciones positivas las que se registraron en el SNVS. Específicamente, en el periodo del Plan Invierno fueron 154 determinaciones positivas notificadas. REVISAR
+En 2025, de los 562 NNyA ≤14 años internados por IRA, 421 (75%) tuvieron resultados de laboratorio positivos para algún agente viral, indicando la presencia de infecciones virales confirmadas por laboratorio.
+
+Específicamente, en el periodo del Plan Invierno fueron 455 NNyA ≤14 años internados por IRA. De ese total en 362 (80%) internaciones se identificaron por laboratorio la presencia de agente viral.
 
 ```{r}
+#| lightbox: true
+grafico_internados_prov
+```
+
+<br> <br> <br>
+
+```{r}
+#| lightbox: true
 grafico_virusprov_gglop
 ```
 
-```{r fig.width=20, fig.height=10}
-grafico_edad_VR 
+## Plan invierno
+
+```{r}
+#| lightbox: true
+
+grafico_edad_VR
 ```
+
+![](logos/tabla DX.png)
+
+## Establecimiento de internación
+
+### Hospital provincial Neuquén-Dr. E. Castro Rendón

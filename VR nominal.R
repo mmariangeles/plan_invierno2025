@@ -102,8 +102,7 @@ VR_NOMINAL <- VR_NOMINAL %>%
   mutate(
     FECHA_ = coalesce(FIS, FECHA_CONSULTA, FECHA_ESTUDIO, FECHA_APERTURA),
     AÑO = year(FECHA_),
-    SEPI_ = epiweek(FECHA_)
-  )
+    SEPI_ = epiweek(FECHA_))
 
 
 #================================================================
@@ -226,8 +225,7 @@ algoritmo_1 <- function(data, col_signos, col_comorbilidades, col_determinacion,
     "Fueron corregidos (segun algoritmo detallado en la documentación) los ID que presentaban resultados diferentes para una misma determinacion. Estos IDs son:", 
     paste(ids_algoritmo_aplicado, collapse = ", "), "\n",
     "Aquellos IDs que no pudieron corregirse quedaron pendientes de revision:", 
-    paste(ids_revision, collapse = ", ")
-  )
+    paste(ids_revision, collapse = ", "))
   
   #print(mensaje_revision)
   invisible(mensaje_revision)
@@ -301,6 +299,8 @@ resultado_algoritmo_1 <- algoritmo_1(data = VR_NOMINAL,
 # extrae el dataframe procesado
 VRNOMINAL_EVENTOCASO <-resultado_algoritmo_1$data
 
+
+
 # genera mensaje para comprobar que se realizó la transformación
 mensaje5 <- resultado_algoritmo_1$mensaje_revision
 
@@ -331,10 +331,8 @@ VRNOMINAL_EVENTOCASO<- VRNOMINAL_EVENTOCASO%>%
                      ~  str_to_lower(.) %in% c("positivo", "detectable"))) > 0 ~ "1",  # Si hay al menos un Positivo o Detectable, asignar 1
       rowSums(across(starts_with("DETERMINACION_"), 
                      ~ str_to_lower(.) %in% c("negativo", "no detectable"))) > 0 ~ "0",  # Si solo hay Negativo o No detectable, asignar 0
-      TRUE ~ "99"  # Si no hay información, asignar NA
-    )
-  )
-
+      TRUE ~ "99" )) # Si no hay información, asignar NA
+  
 
 
 #---------------------------------------------------------------------
@@ -472,11 +470,13 @@ resultado_long <- resultado %>%
   pivot_longer(
     cols = c(Detectable, No_detectable),
     names_to = "Tipo_Resultado",
-    values_to = "n" )
+    values_to = "n" ) 
+  
 
 
 resultado_long_sinotro <- resultado_long %>% 
-  filter(DETERMINACION != "Otro")
+  filter(DETERMINACION!= "Otro") 
+  
 
 resultado_long_sinotro <- resultado_long_sinotro %>%
   mutate(
@@ -492,15 +492,123 @@ positivos_invierno <- resultado_long_sinotro %>%
     as.numeric(SEPI_APERTURA) >= 19,
     as.numeric(SEPI_APERTURA) <= 40)
 
+
+
+VRNOMINAL_EVENTOCASO <- VRNOMINAL_EVENTOCASO %>% 
+  filter(DETERMINACION_DICO%in% c(0,1))
+
+###########################################################################################
+###########################################################################################
+###########################################################################################
+#########################TABLAS############################################################
+###########################################################################################
+###########################################################################################
+
+
+#TABLA CON INTERNADOS por determinacion si o no 
+tabla1_wide <- VRNOMINAL_EVENTOCASO %>% 
+  filter(DETERMINACION_DICO %in% c(0,1), INTERNADO == "SI") %>% 
+  group_by(SEPI_APERTURA, DETERMINACION_DICO) %>% 
+  summarise(
+    cantidad_ID = n_distinct(IDEVENTOCASO),
+    .groups = "drop") %>%
+  pivot_wider(
+    names_from = DETERMINACION_DICO,  
+    values_from = cantidad_ID,         
+    values_fill = 0 ) %>%
+  rename(
+    No = `0`,
+    Si = `1`) %>%
+  mutate(
+    total = No + Si )
+
+  
+
+#GRAFICO
+# Pasar de wide a long para ggplot
+tabla_long <- tabla1_wide %>%
+  pivot_longer(
+    cols = c(Si, No),
+    names_to = "determinacion",
+    values_to = "cantidad")
+
+# Gráfico de barras apiladas
+grafico_internados_prov <- ggplot(tabla_long, aes(x = SEPI_APERTURA, y = cantidad, fill = determinacion)) +
+  
+  # 🔵 sombreado del Plan Invierno con mapeo a fill
+  geom_rect(aes(xmin = 19, xmax = 40, ymin = -Inf, ymax = Inf, fill = "Periodo del Plan Invierno (Mayo-Septiembre)"),
+            inherit.aes = FALSE,
+            alpha = 0.15) +
+  
+  # 🔵 líneas punteadas
+  geom_vline(xintercept = c(19, 40),
+             linetype = "dashed",
+             color = "#ADD8E6",
+             linewidth = 0.8) +
+  # 🔵 barras apiladas
+  geom_col() +
+  scale_fill_manual(
+    values = c(
+      "Si" = "#b39cd0", 
+      "No" = "#60730c",
+      "Periodo del Plan Invierno (Mayo-Septiembre)" = "#ADD8E6")) +
+  # Etiquetas
+  labs(
+    x = "SE",
+    y = "NNyA ≤14 años internados",
+    fill = "",
+      title = "Internación de NNyA ≤14 años según resultado de la determinación. \nProvincia del Neuquén, año 2025. N detectables=421, N no detectable=141.") +
+  theme_classic() +
+  scale_x_continuous(breaks = seq(1, 53, by = 3)) +
+  theme(
+    legend.position = "bottom")
+
+grafico_internados_prov
+
+# Total internados en Plan Invierno (SE 19 a 40)
+plan_invierno <- tabla_long %>%
+  filter(SEPI_APERTURA >= 19, SEPI_APERTURA <= 40) %>%  # Filtra semanas del plan invierno
+  group_by(determinacion) %>%
+  summarise(
+    cantidad = sum(cantidad),
+    .groups = "drop")
+plan_invierno
+
+
+
+#######################################################################################
+#################PROVINCIAL POR AGENTE VIRAL###########################################
+#######################################################################################
+tabla_virus_wide <- resultado_long_sinotro %>%
+  filter(Tipo_Resultado == "Detectable") %>%  # solo positivos
+  group_by(SEPI_APERTURA, DETERMINACION) %>%
+  summarise(
+    cantidad_ID = sum(n, na.rm = TRUE),  # suma de detectables por virus
+    .groups = "drop") %>%
+  pivot_wider(
+    names_from = DETERMINACION,    # cada virus se convierte en columna
+    values_from = cantidad_ID,
+    values_fill = 0) %>%                # si no hay casos, poner 0
+  mutate(
+    total = rowSums(across(-SEPI_APERTURA))) # suma total de todos los virus por semana
+
+
+
+# Tabla filtrada por Plan Invierno (SE 19 a 40)
+tabla_virus_invierno <- tabla_virus_wide %>%
+  filter(as.numeric(SEPI_APERTURA) >= 19,
+         as.numeric(SEPI_APERTURA) <= 40)
+
 ###GRAFICO#####
 
-grafico_virusprov_gglop <- ggplot(resultado_long_sinotro, 
+
+grafico_virusprov_gglop <- ggplot(resultado_long_sinotro %>% filter(Tipo_Resultado=="Detectable"), 
                                   aes(x = as.numeric(SEPI_APERTURA), 
-                                      y = n, 
-                                      fill = Tipo_Resultado)) +
+                                      y = n,
+                                      fill = "Detectable")) +   # barras controlan leyenda
   
-  # 🔵 sombreado con leyenda
-  geom_rect(aes(xmin = 19, xmax = 40, ymin = -Inf, ymax = Inf,
+  # 🔵 sombreado del Plan Invierno
+  geom_rect(aes(xmin = 19, xmax = 40, ymin = -Inf, ymax = Inf, 
                 fill = "Periodo del Plan Invierno (Mayo-Septiembre)"),
             inherit.aes = FALSE,
             alpha = 0.15) +
@@ -509,90 +617,152 @@ grafico_virusprov_gglop <- ggplot(resultado_long_sinotro,
   geom_vline(xintercept = c(19, 40),
              linetype = "dashed",
              color = "#FFF3BB",
-             linewidth = 0.8) +
+             linewidth = 0.8,
+             show.legend = FALSE) +
+  
+  # 🔵 barras apiladas
   geom_col(position = "stack") +
+  
   facet_wrap(~ DETERMINACION, ncol = 2) +
+  
+  # Escala manual de colores para ambas cosas
   scale_fill_manual(
     values = c(
-      "No detectable" = "#60730c",
       "Detectable" = "#b39cd0",
-      "Periodo del Plan Invierno (Mayo-Septiembre)" = "#FFF3BB"),
-    name = "Resultado") +
+      "Periodo del Plan Invierno (Mayo-Septiembre)" = "#ADD8E6"),
+    name = "Leyenda") +
+  
   scale_x_continuous(breaks = seq(1, 53, by = 3)) +
+  
   labs(
-    title = "Detección de virus respiratorios por semana. Provincia del Neuquén, año 2025.\n N=714",
+    title = "Internación de NNyA ≤14 años según agente etiológico confirmado por laboratorio. \nProvincia del Neuquén, año 2025. N=421",
     x = "Semana epidemiológica",
-    y = "Número de testeos") +
+    y = "NNyA ≤14 años internados") +
+  
   theme_classic() +
   theme(
     legend.position = "bottom")
+
 grafico_virusprov_gglop
 
-#######################################################
-#### GRUPOS DE EDAD ####################################
-######################################################
 
-data_edad_virus <- VRNOMINAL_EVENTOCASO %>%
+
+#=============================================================
+# GRUPOS DE EDAD – INTERNADOS POSITIVOS POR VIRUS
+#=============================================================
+
+# 1️⃣ Filtrar solo internados positivos
+positivos <- VRNOMINAL_EVENTOCASO %>%
+  filter(DETERMINACION_DICO == "1") %>%  # Solo positivos
+  filter(as.numeric(SEPI_APERTURA) >= 19,
+    as.numeric(SEPI_APERTURA) <= 40)
+
+
+# 2️⃣ Identificar columnas de determinaciones
+columnas_determinacion <- names(positivos) %>% 
+  str_subset("^DETERMINACION_") %>%
+  setdiff(c("DETERMINACION_DICO", "DETERMINACION_DICO_CENTINELA", "DETERMINACION_SIN_DATO"))
+
+# 3️⃣ Pivotear para que cada virus sea columna
+tabla_virus_edad <- positivos %>%
+  select(GRUPO_ETARIO, all_of(columnas_determinacion)) %>%
   pivot_longer(
-    cols = starts_with("DETERMINACION_"),
-    names_to = "Tipo_Determinacion",
+    cols = all_of(columnas_determinacion),
+    names_to = "Determinacion",
     values_to = "Resultado") %>%
-  mutate(
-    DETERMINACION = clasificar_virus(Tipo_Determinacion),
-    Resultado = str_to_lower(Resultado)) %>%
-  filter(Resultado %in% c("positivo", "detectable")) %>%
-  filter(DETERMINACION != "Otro") %>% 
-  count(GRUPO_ETARIO, DETERMINACION)
+  # Solo consideramos positivos/detectables
+  filter(str_to_lower(Resultado) %in% c("positivo", "detectable")) %>%
+  group_by(GRUPO_ETARIO, Determinacion) %>%
+  summarise(Cantidad = n(), .groups = "drop") %>%
+  # Pivotamos para que cada virus sea columna
+  pivot_wider(
+    names_from = Determinacion,
+    values_from = Cantidad,
+    values_fill = 0)
 
-N_total_grupoedad<- sum(data_edad_virus$n)
+# 4️⃣ Convertir tabla wide a long para ggplot
+data_edad_virus_long <- tabla_virus_edad %>%
+  pivot_longer(
+    cols = -GRUPO_ETARIO,
+    names_to = "DETERMINACION",
+    values_to = "n"
+  ) %>%
+  # Limpiamos el prefijo
+  mutate(DETERMINACION = str_remove(DETERMINACION, "^DETERMINACION_")) %>%
+  # Aplicamos la función que estandariza los nombres de virus
+  mutate(DETERMINACION = clasificar_virus(DETERMINACION)) %>%
+  # Ordenamos los grupos de edad de mayor a menor
+  mutate(GRUPO_ETARIO = factor(
+    GRUPO_ETARIO,
+    levels = rev(c(
+      "De 10 a 14 años",
+      "De 5 a 9 años",
+      "De 2 a 4 años",
+      "De 13 a 24 meses",
+      "Posneonato (29 hasta 365 dÍas)",
+      "Neonato (hasta 28 dÍas)"
+    ))
+  ))
 
-#orden grupos etarios
-data_edad_virus <- data_edad_virus %>%
-  mutate(
-    GRUPO_ETARIO = factor(
-      GRUPO_ETARIO,
-      levels = c(
-        "Neonato (hasta 28 dÍas)",
-        "Posneonato (29 hasta 365 dÍas)",
-        "De 13 a 24 meses",
-        "De 2 a 4 años",
-        "De 5 a 9 años",
-        "De 10 a 14 años")))
-
-
+# 5️⃣ Definir colores de virus
 colores_virus <- c(
-   "Influenza A" = "#f9f871",
+  "Influenza A" = "#f9f871",
   "Metaneumovirus" = "#ffc75f",
   "Parainfluenza" = "#ff9671",
   "SARS-CoV-2" = "#ff6f91",
   "Adenovirus" = "#d65db1",
-  "VSR" = "#ab87b8")
+  "VSR" = "#ab87b8"
+)
 
-grafico_edad_VR <- ggplot(data_edad_virus,
-       aes(y = GRUPO_ETARIO,
-           x = n,
-           fill = DETERMINACION)) +
-  scale_fill_manual(values = colores_virus) +
+# 6️⃣ Graficar
+grafico_edad_VR <- ggplot(data_edad_virus_long,
+                          aes(y = GRUPO_ETARIO,
+                              x = n,
+                              fill = DETERMINACION)) +
   geom_col(position = "stack") +
+  scale_fill_manual(values = colores_virus) +
   labs(
-    title = "Distribución de casos positivos por grupo etario según virus. Provincia del Neuquén, año 2025.\nN=429",
-    x = "Número de casos",
+    title = "Internación de NNyA ≤14 años según agente etiológico \nconfirmado por laboratorio. Provincia del Neuquén, periodo Plan Invierno. \nN=362",
+    x = "NNyA ≤14 años internados",
     y = "Grupo de edad",
     fill = "Virus") +
-  theme_classic()+
-  theme(
-    legend.position = "bottom")
-grafico_edad_VR 
+  theme_classic() +
+  theme(legend.position = "bottom")
+
+grafico_edad_VR
 
 
+#############################################################################################################################
+################################TABLA AGENTE ETIOLOGICO Y DIAG REFERIDO#####################################################
+############################################################################################################################
+
+tabla_diag_virus <- positivos %>%
+  select(IDEVENTOCASO, DIAG_REFERIDO, all_of(columnas_determinacion)) %>%
+  pivot_longer(
+    cols = all_of(columnas_determinacion),
+    names_to = "Determinacion",
+    values_to = "Resultado"
+  ) %>%
+  # Solo positivos/detectables
+  filter(str_to_lower(Resultado) %in% c("positivo", "detectable")) %>%
+  # Aplicar función de nombres “bonitos”
+  mutate(DETERMINACION = clasificar_virus(str_remove(Determinacion, "^DETERMINACION_"))) %>%
+  select(-Determinacion, -Resultado)
 
 
-
-
-
-
-
-
+# 4️⃣ Contar por cada virus y cada diag_referido
+tabla_final <- tabla_diag_virus %>%
+  group_by(DETERMINACION, DIAG_REFERIDO) %>%
+  summarise(Cantidad = n_distinct(IDEVENTOCASO), .groups = "drop") %>%
+  pivot_wider(
+    names_from = DIAG_REFERIDO,
+    values_from = Cantidad,
+    values_fill = 0) %>%
+    rowwise() %>%
+  mutate(Total = sum(c_across(-DETERMINACION))) %>%
+  ungroup() %>%
+  arrange(desc(Total))  # opcional: orden por Total de mayor a menor
+tabla_final
 
 
 
