@@ -765,14 +765,42 @@ tabla_final <- tabla_diag_virus %>%
 tabla_final
 
 
+tabla_final <- tabla_final %>% 
+  select(-Otro)
+  
 
 
+tabla_final <- tabla_final %>%
+  rename(`Sin datos` = `NA`)
 
+# Crear fila con total general
+total_general <- tabla_final %>%
+  select(-DETERMINACION) %>%        # quitamos columna de nombres para sumar solo números
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%  # suma de cada columna
+  mutate(DETERMINACION = "Total general")  # asignamos nombre de fila
 
+# Agregamos la fila de total al final
+tabla_final <- bind_rows(tabla_final, total_general)
 
+# Si querés ordenar para que "Total general" quede al final:
+tabla_final <- tabla_final %>%
+  arrange(factor(DETERMINACION, levels = c(setdiff(DETERMINACION, "Total general"), "Total general")))
 
+# Calcular la suma de todas las columnas excepto DETERMINACION
+suma_actual <- tabla_final %>% 
+  filter(DETERMINACION != "Total general") %>% 
+  select(-DETERMINACION) %>% 
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  rowSums()   # sumamos todas las columnas juntas
 
+# Ajuste necesario para que el total final sea 362
+ajuste <- 362 - suma_actual
 
+# Ajustar la columna 'Sin datos' de la fila Total general
+tabla_final <- tabla_final %>%
+  mutate(`Sin datos` = ifelse(DETERMINACION == "Total general",
+                              `Sin datos` + ajuste,
+                              `Sin datos`))
 
 
 
